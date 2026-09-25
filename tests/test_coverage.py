@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ledger import (build, coverage_for_file, coverage_report_from_ledger,
                     extract_result_texts, parse_call_records, render_coverage,
-                    resolve_session, tool_result_linkage)
+                    resolve_session, to_dict, tool_result_linkage)
 
 
 class CoverageTests(unittest.TestCase):
@@ -634,3 +634,59 @@ class ReadEvidenceTests(unittest.TestCase):
             [["call_first", "call_second", "call_third"]],
         )
         self.assertEqual(report["uncontinued_truncated_call_ids"], [])
+
+
+class ToDictTests(unittest.TestCase):
+    def test_to_dict_serializes_structured_summary(self):
+        rows = [
+            {
+                "role": "assistant",
+                "tool_calls": json.dumps([{
+                    "id": "call_1",
+                    "function": {
+                        "name": "read_file",
+                        "arguments": json.dumps({"path": "sample.txt"}),
+                    },
+                }]),
+                "content": "Claiming that I read the sample.",
+                "id": 1,
+                "timestamp": 100.0,
+            },
+            {
+                "role": "tool",
+                "tool_name": "read_file",
+                "tool_call_id": "call_1",
+                "content": json.dumps({"content": "1|sample line"}),
+                "timestamp": 101.5,
+            },
+        ]
+        led = build(rows)
+        meta = {"session": "test_sess", "n_rows": len(rows), "start": 100.0, "end": 101.5}
+        d = to_dict(led, meta)
+        self.assertEqual(d["session"], "test_sess")
+        self.assertEqual(d["messages"], 2)
+        self.assertAlmostEqual(d["span_seconds"], 1.5)
+        self.assertEqual(d["tool_call_count"], 1)
+        self.assertEqual(d["tool_result_count"], 1)
+        self.assertEqual(d["tool_result_linkage"]["matched"], 1)
+        self.assertEqual(d["tool_call_counts"], {"read_file": 1})
+        self.assertEqual(len(d["calls"]), 1)
+        self.assertEqual(d["calls"][0]["name"], "read_file")
+        self.assertEqual(d["calls"][0]["call_id"], "call_1")
+        self.assertEqual(len(d["narrative_claims"]), 1)
+        self.assertEqual(d["narrative_claims"][0]["text"], "Claiming that I read the sample.")
+
+    def test_to_dict_with_coverage_report(self):
+        rows = [{
+            "role": "assistant",
+            "tool_calls": "[]",
+            "content": "No tools",
+            "id": 1,
+            "timestamp": 10.0,
+        }]
+        led = build(rows)
+        meta = {"session": "cov_sess", "n_rows": 1, "start": 10.0, "end": 10.0}
+        cov_dummy = [{"path": "dummy.py", "coverage_percent": 100.0}]
+        d = to_dict(led, meta, coverage_report=cov_dummy)
+        self.assertIn("coverage_report", d)
+        self.assertEqual(d["coverage_report"][0]["coverage_percent"], 100.0)

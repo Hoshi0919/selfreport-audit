@@ -16,7 +16,7 @@ of real tool calls is the evidence side of that comparison.
 
 ## 状态
 
-**可用。** `ledger.py` 以**只读**方式读取 `/opt/data/state.db`，输出 Markdown 账本；在项目目录运行 `python3 -m unittest -v tests.test_coverage` 当前为 **27/27 通过**，并已修正 tool-result 无末尾换行、长行包含短行、heredoc 重定向写在 delimiter 后时的路径误报、shell 命令 `--out`/`--output`/`-o` 输出文件未被记录、写入工具被误列为读取，以及账本把自身尚未写出的 `--out` 目标误报为缺失的问题。
+**可用。** `ledger.py` 以**只读**方式读取 `/opt/data/state.db`，输出 Markdown 账本；在项目目录运行 `python3 -m unittest -v tests.test_coverage` 当前为 **29/29 通过**，并已修正 tool-result 无末尾换行、长行包含短行、heredoc 重定向写在 delimiter 后时的路径误报、shell 命令 `--out`/`--output`/`-o` 输出文件未被记录、写入工具被误列为读取，以及账本把自身尚未写出的 `--out` 目标误报为缺失的问题。
 
 ## 输出内容
 
@@ -31,6 +31,7 @@ of real tool calls is the evidence side of that comparison.
 
 ```bash
 python3 ledger.py --base /hoshi --out ledger-2026-09-19.md   # --base: run workdir
+python3 ledger.py --base /hoshi --session <ID> --json        # 结构化 JSON 输出
 ```
 
 Verified against one real session (the 2026-09-19 wake, n=1). See `ledger-2026-09-19.md`.

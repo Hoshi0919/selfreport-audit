@@ -395,6 +395,65 @@ def render(led, meta):
     return "\n".join(L)
 
 
+def to_dict(led, meta, coverage_report=None):
+    writes = []
+    seen_writes = set()
+    for path, how in led["writes"]:
+        key = resolve(path)
+        if key in seen_writes:
+            continue
+        seen_writes.add(key)
+        writes.append({
+            "path": path,
+            "how": how,
+            "resolved_path": key,
+            "status": exists_check(path),
+        })
+
+    reads = []
+    seen_reads = set()
+    for path, how in led["reads"]:
+        if (path, how) in seen_reads:
+            continue
+        seen_reads.add((path, how))
+        reads.append({
+            "path": path,
+            "how": how,
+        })
+
+    calls = []
+    for i, c in enumerate(led["calls"], 1):
+        calls.append({
+            "index": i,
+            "name": c["name"],
+            "call_id": c.get("call_id"),
+            "summary": c.get("summary"),
+            "args": c.get("args"),
+        })
+
+    result = {
+        "session": meta["session"],
+        "messages": meta["n_rows"],
+        "base_path": BASE,
+        "span_seconds": (meta["end"] - meta["start"]) if (meta.get("start") and meta.get("end")) else None,
+        "start_time": datetime.fromtimestamp(meta["start"]).isoformat() if meta.get("start") else None,
+        "end_time": datetime.fromtimestamp(meta["end"]).isoformat() if meta.get("end") else None,
+        "assistant_prose_count": len(led["prose"]),
+        "tool_call_count": len(led["calls"]),
+        "tool_result_count": len(led["tool_results"]),
+        "tool_result_linkage": led["tool_result_linkage"],
+        "tool_call_counts": dict(Counter(c["name"] for c in led["calls"])),
+        "artifacts_written": writes,
+        "external_sources": [{"url": u, "how": how} for u, how in led["urls"]],
+        "files_inspected": reads,
+        "calls": calls,
+        "narrative_claims": [{"message_id": p["id"], "text": p["text"]} for p in led["prose"]],
+    }
+    if coverage_report is not None:
+        result["coverage_report"] = coverage_report
+    return result
+
+
 
 def extract_result_texts(raw):
     """Return user-visible text from one stored tool-result payload."""
@@ -710,6 +769,8 @@ def main():
                          "(default: $PWD; use the run's workdir, e.g. /hoshi)")
     ap.add_argument("--corpus", nargs="+", metavar="PATH",
                     help="files to measure against tool-result content")
+    ap.add_argument("--json", action="store_true",
+                    help="output structured JSON instead of markdown")
     a = ap.parse_args()
     global BASE
     if a.base:
@@ -730,11 +791,16 @@ def main():
     led = build(rows, exclude_writes=[a.out] if a.out else [])
     meta = {"session": session, "n_rows": len(rows),
             "start": rows[0]["timestamp"], "end": rows[-1]["timestamp"]}
-    text = render(led, meta)
+    coverage_data = None
     if a.corpus:
-        text += "\n\n" + render_coverage(
-            coverage_report_from_ledger(a.corpus, led)
-        ) + "\n"
+        coverage_data = coverage_report_from_ledger(a.corpus, led)
+    if a.json:
+        payload = to_dict(led, meta, coverage_report=coverage_data)
+        text = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    else:
+        text = render(led, meta)
+        if a.corpus:
+            text += "\n\n" + render_coverage(coverage_data) + "\n"
     if a.out:
         if os.path.exists(a.out) and not a.force:
             sys.exit(f"refusing to overwrite {a.out} (pass --force). "
